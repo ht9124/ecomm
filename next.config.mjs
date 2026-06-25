@@ -17,9 +17,16 @@ const nextConfig = {
     // (JSON-LD breakout) safeJsonLd() ile kapatıldı; buradaki politika
     // ek koruma sağlar (base-tag enjeksiyonu, clickjacking, form hijack,
     // veri sızdırma yüzeyi). Tam katı koruma için nonce-tabanlı CSP'ye geçilebilir.
+    // Next.js DEV modu Fast Refresh/HMR için 'unsafe-eval' gerektirir; bu
+    // YALNIZCA development'ta eklenir, production CSP'si sıkı kalır.
+    const isDev = process.env.NODE_ENV !== "production";
+    const scriptSrc = isDev
+      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com"
+      : "script-src 'self' 'unsafe-inline' https://unpkg.com";
+
     const csp = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' https://unpkg.com",
+      scriptSrc,
       "style-src 'self' 'unsafe-inline' https://unpkg.com",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data: https://unpkg.com",
