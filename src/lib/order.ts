@@ -11,8 +11,9 @@ import { generateOpaqueToken } from "./auth";
 
 function generateOrderNumber(): string {
   const year = new Date().getFullYear();
-  // Çakışmayı en aza indirmek için rastgele sonek; production'da sequence önerilir.
-  const rand = generateOpaqueToken(4).slice(0, 8).toUpperCase();
+  // O-1: 8 byte (64 bit) rastgele sonek — numaralandırma/tahmin edilemez.
+  // (Önceki 32 bit, takip oracle'ı ile birlikte sipariş keşfini kolaylaştırıyordu.)
+  const rand = generateOpaqueToken(8).toUpperCase(); // 16 hex karakter
   return `ECM-${year}-${rand}`;
 }
 

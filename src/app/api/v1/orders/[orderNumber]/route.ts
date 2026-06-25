@@ -13,13 +13,14 @@ export const GET = handle(async (req, { params }) => {
     where: { orderNumber: params.orderNumber },
     include: { items: true, payment: true, shipment: true },
   });
-  if (!order || order.deletedAt) return fail("Sipariş bulunamadı", 404);
-
-  // Erişim kontrolü: sahibi olan üye VEYA doğru e-posta ile misafir.
-  const isOwner = user && order.userId === user.sub;
-  const isGuestMatch = email && order.email.toLowerCase() === email.toLowerCase();
-  if (!isOwner && !isGuestMatch && user?.role !== "ADMIN") {
-    return fail("Bu siparişi görüntüleme yetkiniz yok", 403);
+  // O-1: Var olmayan ile yetkisiz arasında AYRIM YAPMA — her ikisi de 404.
+  // 403 dönmek "bu sipariş no var" oracle'ı yaratır (numaralandırma sızıntısı).
+  const isOwner = user && order && order.userId === user.sub;
+  const isGuestMatch =
+    email && order && order.email.toLowerCase() === email.toLowerCase();
+  const isAdmin = user?.role === "ADMIN";
+  if (!order || order.deletedAt || (!isOwner && !isGuestMatch && !isAdmin)) {
+    return fail("Sipariş bulunamadı", 404);
   }
 
   return ok({
