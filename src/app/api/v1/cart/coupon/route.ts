@@ -8,12 +8,13 @@ import { validateCoupon } from "@/lib/coupon";
 import { applyCouponSchema } from "@/lib/validation";
 
 export const POST = handle(async (req) => {
-  const { cart } = await resolveCart();
+  const { cart, userId } = await resolveCart();
   const { code } = applyCouponSchema.parse(await req.json());
 
   const view = await getCartView(cart.id);
-  // Min sepet vb. kuralları doğrula (geçersizse hata fırlatır).
-  const coupon = await validateCoupon(code, view.pricing.subtotal);
+  // Min sepet + kullanıcı-başı limit (üyede userId ile) doğrulanır; geçersizse hata.
+  // Misafirde e-posta henüz yok → perUserLimit checkout'ta (e-posta ile) backstop edilir.
+  const coupon = await validateCoupon(code, view.pricing.subtotal, { userId });
 
   await prisma.cart.update({ where: { id: cart.id }, data: { couponCode: coupon.code } });
   return ok(await getCartView(cart.id));

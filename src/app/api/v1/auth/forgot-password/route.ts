@@ -9,10 +9,16 @@ import { notifyPasswordReset } from "@/lib/notifications";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export const POST = handle(async (req) => {
-  if (!rateLimit(`forgot:${clientIp(req)}`, 5, 60000).allowed) {
+  if (!rateLimit(`forgot:ip:${clientIp(req)}`, 5, 60000).allowed) {
     return fail("Çok fazla deneme", 429);
   }
   const { email } = forgotPasswordSchema.parse(await req.json());
+
+  // Hesap başına limit (Y-2): hedef adrese sıfırlama e-postası bombardımanını
+  // engeller. Yanıt yine de tek tip (enumeration koruması korunur).
+  if (!rateLimit(`forgot:acct:${email.toLowerCase()}`, 3, 15 * 60 * 1000).allowed) {
+    return ok({ message: "Eğer e-posta kayıtlıysa sıfırlama bağlantısı gönderildi" });
+  }
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (user && !user.deletedAt) {

@@ -83,4 +83,11 @@ export const env = {
     windowMs: num("RATE_LIMIT_WINDOW_MS", 60000),
     max: num("RATE_LIMIT_MAX", 100),
   },
+
+  security: {
+    // Uygulamanın önündeki GÜVENİLİR proxy/CDN hop sayısı (Y-2). Gerçek istemci
+    // IP'si X-Forwarded-For listesinde sağdan bu kadar içeridedir. Doğrudan
+    // (proxy'siz) servis için 0; tek CDN/reverse-proxy arkasında 1.
+    trustedProxyCount: num("TRUSTED_PROXY_COUNT", 1),
+  },
 } as const;

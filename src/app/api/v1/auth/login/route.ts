@@ -8,10 +8,17 @@ import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export const POST = handle(async (req) => {
   // Brute-force koruması — IP başına sıkı limit.
-  if (!rateLimit(`login:${clientIp(req)}`, 8, 60000).allowed) {
+  if (!rateLimit(`login:ip:${clientIp(req)}`, 8, 60000).allowed) {
     return fail("Çok fazla başarısız deneme, lütfen bekleyin", 429);
   }
   const body = loginSchema.parse(await req.json());
+
+  // HESAP başına limit (Y-2): IP rotasyonu yapılsa bile tek bir hesaba karşı
+  // deneme sayısı sınırlı kalır. 15 dk içinde 10 deneme.
+  const emailKey = `login:acct:${body.email.toLowerCase()}`;
+  if (!rateLimit(emailKey, 10, 15 * 60 * 1000).allowed) {
+    return fail("Bu hesap için çok fazla deneme yapıldı, lütfen sonra tekrar deneyin", 429);
+  }
 
   const user = await prisma.user.findUnique({ where: { email: body.email } });
   // Aynı hata mesajı — kullanıcı var/yok bilgisini sızdırma.

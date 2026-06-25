@@ -112,6 +112,7 @@ async function main() {
       minSubtotal: 500,
       maxDiscount: 1000,
       usageLimit: 1000,
+      perUserLimit: 1, // kullanıcı/e-posta başına 1 kez (Y-3 ile uygulanır)
       isActive: true,
     },
   });

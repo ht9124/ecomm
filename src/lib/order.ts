@@ -51,8 +51,23 @@ export async function createOrderFromCart(params: {
     const couponCode = input.couponCode ?? cart.couponCode;
     if (couponCode) {
       coupon = await tx.coupon.findUnique({ where: { code: couponCode.toUpperCase() } });
-      if (coupon && (!coupon.isActive || (coupon.minSubtotal && subtotalPre < Number(coupon.minSubtotal)))) {
-        coupon = null;
+      if (coupon) {
+        let invalid =
+          !coupon.isActive ||
+          Boolean(coupon.minSubtotal && subtotalPre < Number(coupon.minSubtotal)) ||
+          (coupon.usageLimit != null && coupon.usedCount >= coupon.usageLimit);
+
+        // Kullanıcı-başı limit backstop (Y-3): üyede userId, misafirde e-posta ile.
+        // İptal edilen siparişler sayılmaz (kupon release edilmiştir).
+        if (!invalid && coupon.perUserLimit != null) {
+          const where = userId
+            ? { couponId: coupon.id, userId, status: { not: "CANCELLED" as const } }
+            : { couponId: coupon.id, email: input.email, status: { not: "CANCELLED" as const } };
+          const usedByUser = await tx.order.count({ where });
+          if (usedByUser >= coupon.perUserLimit) invalid = true;
+        }
+
+        if (invalid) coupon = null; // uygun değilse kuponu sessizce düşür (indirimsiz devam)
       }
     }
 
