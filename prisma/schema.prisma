@@ -1,0 +1,429 @@
+// Prisma şeması — e-ticaret domain modeli
+// Analist minimum set: Users, Products, Categories, Orders, OrderItems,
+// Addresses, Payments + katalog/promosyon/iade için ek tablolar.
+// Tasarım ilkeleri: ilişkisel bütünlük, soft delete (deletedAt), kritik
+// alanlarda index, para alanları Decimal(10,2), zaman damgaları.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Kullanıcı & yetkilendirme
+// ---------------------------------------------------------------------------
+
+enum Role {
+  CUSTOMER // müşteri
+  ADMIN // yönetici
+  INVENTORY // stok sorumlusu
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String?
+  firstName    String?
+  lastName     String?
+  phone        String?
+  role         Role      @default(CUSTOMER)
+  emailVerified DateTime?
+
+  // KVKK/GDPR rıza kayıtları
+  marketingConsent Boolean   @default(false)
+  consentAt        DateTime?
+
+  addresses     Address[]
+  orders        Order[]
+  carts         Cart[]
+  reviews       Review[]
+  refreshTokens RefreshToken[]
+  passwordResets PasswordResetToken[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // soft delete
+
+  @@index([role])
+  @@index([deletedAt])
+}
+
+// Refresh token rotasyonu — hash'lenmiş saklanır, revoke edilebilir.
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Address {
+  id          String  @id @default(cuid())
+  userId      String
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String // "Ev", "İş"
+  fullName    String
+  phone       String
+  line1       String
+  line2       String?
+  city        String
+  district    String
+  postalCode  String
+  country     String  @default("TR")
+  isDefault   Boolean @default(false)
+
+  shippingForOrders Order[] @relation("ShippingAddress")
+  billingForOrders  Order[] @relation("BillingAddress")
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Katalog
+// ---------------------------------------------------------------------------
+
+model Category {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String?
+
+  // alt kategori yapısı — self relation
+  parentId String?
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+
+  products Product[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([parentId])
+  @@index([slug])
+}
+
+model Product {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String  @db.Text
+  sku         String  @unique
+
+  // Fiyat KDV DAHİL saklanır (TaxRate ile hariç tutar hesaplanır)
+  price        Decimal  @db.Decimal(10, 2)
+  compareAt    Decimal? @db.Decimal(10, 2) // üstü çizili eski fiyat
+  currency     String   @default("TRY")
+  taxRate      Decimal  @default(0.20) @db.Decimal(4, 2)
+
+  stock     Int     @default(0)
+  isActive  Boolean @default(true)
+  weight    Int? // gram — kargo hesabı için
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  images     ProductImage[]
+  orderItems OrderItem[]
+  cartItems  CartItem[]
+  reviews    Review[]
+
+  // SEO
+  metaTitle       String?
+  metaDescription String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([categoryId])
+  @@index([slug])
+  @@index([isActive])
+  @@index([price])
+  @@index([deletedAt])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  thumbUrl  String?
+  alt       String?
+  position  Int     @default(0)
+
+  @@index([productId])
+}
+
+model Review {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int // 1..5
+  comment   String? @db.Text
+  isApproved Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@unique([productId, userId])
+  @@index([productId])
+}
+
+// ---------------------------------------------------------------------------
+// Sepet
+// ---------------------------------------------------------------------------
+
+// Üye sepeti userId ile, misafir sepeti sessionToken ile takip edilir.
+model Cart {
+  id           String  @id @default(cuid())
+  userId       String?
+  user         User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessionToken String? @unique // misafir sepeti için çerez tabanlı token
+
+  items      CartItem[]
+  couponCode String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model CartItem {
+  id        String  @id @default(cuid())
+  cartId    String
+  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int     @default(1)
+
+  @@unique([cartId, productId])
+  @@index([cartId])
+}
+
+// ---------------------------------------------------------------------------
+// Sipariş & ödeme
+// ---------------------------------------------------------------------------
+
+enum OrderStatus {
+  PENDING // ödeme bekleniyor
+  PAID // ödeme alındı
+  PROCESSING // hazırlanıyor
+  SHIPPED // kargoda
+  DELIVERED // teslim edildi
+  CANCELLED // iptal
+  REFUNDED // iade edildi
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  orderNumber String      @unique // insan-okunur: ECM-2026-000123
+  status      OrderStatus @default(PENDING)
+
+  // Misafir checkout: userId null olabilir, e-posta zorunlu.
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email  String
+  phone  String?
+
+  // Adres anlık kopyası (snapshot) + opsiyonel referans
+  shippingAddressId String?
+  shippingAddress   Address? @relation("ShippingAddress", fields: [shippingAddressId], references: [id])
+  billingAddressId  String?
+  billingAddress    Address? @relation("BillingAddress", fields: [billingAddressId], references: [id])
+  shippingSnapshot  Json // teslim anındaki adres kopyası
+
+  items OrderItem[]
+
+  // Tutar dökümü (hepsi KDV dahil mantığıyla)
+  subtotal    Decimal @db.Decimal(10, 2) // ürünler toplamı
+  discount    Decimal @default(0) @db.Decimal(10, 2)
+  shippingFee Decimal @default(0) @db.Decimal(10, 2)
+  taxAmount   Decimal @default(0) @db.Decimal(10, 2) // bilgi amaçlı (dahil edilen KDV)
+  total       Decimal @db.Decimal(10, 2)
+  currency    String  @default("TRY")
+
+  couponId String?
+  coupon   Coupon? @relation(fields: [couponId], references: [id])
+
+  payment  Payment?
+  shipment Shipment?
+  returnRequests ReturnRequest[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([userId])
+  @@index([email])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id])
+
+  // Snapshot — ürün sonradan değişse/silinse de sipariş sabit kalır.
+  name      String
+  sku       String
+  unitPrice Decimal @db.Decimal(10, 2)
+  quantity  Int
+  lineTotal Decimal @db.Decimal(10, 2)
+
+  @@index([orderId])
+}
+
+model Payment {
+  id       String        @id @default(cuid())
+  orderId  String        @unique
+  order    Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider String // iyzico | stripe
+  status   PaymentStatus @default(PENDING)
+
+  amount   Decimal @db.Decimal(10, 2)
+  currency String  @default("TRY")
+
+  // Sağlayıcı referansları + idempotency (duplicate ödeme koruması)
+  providerPaymentId String?
+  idempotencyKey    String? @unique
+  threeDSecure      Boolean @default(true)
+
+  refundedAmount Decimal @default(0) @db.Decimal(10, 2)
+  rawResponse    Json? // webhook doğrulama için ham yanıt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([providerPaymentId])
+}
+
+// Idempotent webhook işleme — her olay bir kez işlenir.
+model WebhookEvent {
+  id         String   @id @default(cuid())
+  provider   String
+  eventId    String
+  payload    Json
+  processedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@unique([provider, eventId])
+}
+
+model Shipment {
+  id           String    @id @default(cuid())
+  orderId      String    @unique
+  order        Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  carrier      String? // Yurtiçi, MNG, Aras...
+  trackingCode String?
+  status       String    @default("PREPARING")
+  shippedAt    DateTime?
+  deliveredAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Promosyon
+// ---------------------------------------------------------------------------
+
+enum DiscountType {
+  PERCENT // yüzde
+  FIXED // sabit tutar
+}
+
+model Coupon {
+  id            String       @id @default(cuid())
+  code          String       @unique
+  type          DiscountType
+  value         Decimal      @db.Decimal(10, 2) // PERCENT için 0..100, FIXED için tutar
+  minSubtotal   Decimal?     @db.Decimal(10, 2) // min sepet tutarı
+  maxDiscount   Decimal?     @db.Decimal(10, 2) // yüzde indirim için tavan
+  usageLimit    Int? // toplam kullanım hakkı
+  usedCount     Int          @default(0)
+  perUserLimit  Int?
+  startsAt      DateTime?
+  expiresAt     DateTime?
+  isActive      Boolean      @default(true)
+
+  orders Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([isActive])
+}
+
+// ---------------------------------------------------------------------------
+// İade / iptal talebi
+// ---------------------------------------------------------------------------
+
+enum ReturnStatus {
+  REQUESTED // talep edildi
+  APPROVED // onaylandı
+  REJECTED // reddedildi
+  REFUNDED // iade tamamlandı
+}
+
+enum ReturnKind {
+  CANCELLATION // kargo öncesi iptal
+  RETURN // teslim sonrası cayma/iade
+}
+
+model ReturnRequest {
+  id          String       @id @default(cuid())
+  orderId     String
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  kind        ReturnKind   @default(RETURN)
+  reason      String       @db.Text
+  status      ReturnStatus @default(REQUESTED)
+  refundAmount Decimal?    @db.Decimal(10, 2)
+  resolvedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([status])
+}

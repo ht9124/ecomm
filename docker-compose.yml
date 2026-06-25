@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ecomm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ecomm
+      POSTGRES_PASSWORD: ecomm
+      POSTGRES_DB: ecomm
+    ports:
+      - "5432:5432"
+    volumes:
+      - ecomm-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecomm -d ecomm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Uygulama (production imajı). Geliştirmede `npm run dev` lokalde çalıştırılır.
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ecomm-web
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://ecomm:ecomm@db:5432/ecomm?schema=public
+    ports:
+      - "3000:3000"
+    profiles:
+      - full
+
+volumes:
+  ecomm-pgdata:
