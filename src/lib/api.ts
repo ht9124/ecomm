@@ -1,5 +1,6 @@
 // API yanıt yardımcıları — tutarlı JSON sözleşmesi ve hata biçimi.
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 
 export function ok<T>(data: T, init?: ResponseInit) {
@@ -30,6 +31,14 @@ export function handle(
       }
       if (err instanceof ApiError) {
         return fail(err.message, err.status, err.details);
+      }
+      // Prisma bilinen hataları anlamlı HTTP koduna eşlenir (500'e düşmez).
+      if (err instanceof Prisma.PrismaClientKnownRequestError) {
+        if (err.code === "P2002") {
+          const target = (err.meta?.target as string[] | undefined)?.join(", ");
+          return fail(target ? `Bu ${target} zaten kullanımda` : "Kayıt zaten mevcut", 409);
+        }
+        if (err.code === "P2025") return fail("Kayıt bulunamadı", 404);
       }
       // Production'da Sentry'ye gönderilir; burada loglanır.
       console.error("[API ERROR]", err);

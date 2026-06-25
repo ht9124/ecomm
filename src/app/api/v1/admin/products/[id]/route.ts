@@ -1,7 +1,7 @@
-// PATCH  /api/v1/admin/products/:id — ürün güncelle (stok dahil)
+// PATCH  /api/v1/admin/products/:id — ürün güncelle
 // DELETE /api/v1/admin/products/:id — soft delete
 import { prisma } from "@/lib/db";
-import { ok, handle } from "@/lib/api";
+import { ok, fail, handle } from "@/lib/api";
 import { requireRole } from "@/lib/guard";
 import { z } from "zod";
 
@@ -15,9 +15,22 @@ const updateSchema = z.object({
   categoryId: z.string().optional(),
 });
 
+// INVENTORY rolü yalnızca STOK güncelleyebilir; fiyat/aktiflik/kategori/içerik
+// gibi alanlar ADMIN'e özeldir (düşük güvenli stok personeli fiyat manipülasyonu
+// yapamaz — yetki ayrıştırması).
+const INVENTORY_ALLOWED = new Set(["stock"]);
+
 export const PATCH = handle(async (req, { params }) => {
-  await requireRole(req, "ADMIN", "INVENTORY");
+  const user = await requireRole(req, "ADMIN", "INVENTORY");
   const body = updateSchema.parse(await req.json());
+
+  if (user.role !== "ADMIN") {
+    const disallowed = Object.keys(body).filter((k) => !INVENTORY_ALLOWED.has(k));
+    if (disallowed.length > 0) {
+      return fail(`Stok sorumlusu yalnızca stok güncelleyebilir. İzin verilmeyen alan(lar): ${disallowed.join(", ")}`, 403);
+    }
+  }
+
   const product = await prisma.product.update({ where: { id: params.id }, data: body });
   return ok(product);
 });

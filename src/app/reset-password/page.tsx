@@ -1,14 +1,22 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 function ResetForm() {
   const sp = useSearchParams();
   const router = useRouter();
-  const token = sp.get("token") ?? "";
+  const [token] = useState(() => sp.get("token") ?? "");
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
+
+  // Token'ı state'e aldıktan sonra URL'den temizle — Referer/geçmiş sızıntısını
+  // azaltır (token tek-kullanımlık ve kısa ömürlü; bu ek derinlemesine savunma).
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.search.includes("token=")) {
+      window.history.replaceState(null, "", "/reset-password");
+    }
+  }, []);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

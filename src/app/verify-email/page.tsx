@@ -6,11 +6,15 @@ import { useSearchParams } from "next/navigation";
 
 function VerifyEmail() {
   const sp = useSearchParams();
-  const token = sp.get("token") ?? "";
+  const [token] = useState(() => sp.get("token") ?? "");
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
+    // Token'ı okuduktan sonra URL'den temizle (Referer/geçmiş sızıntısı).
+    if (typeof window !== "undefined" && window.location.search.includes("token=")) {
+      window.history.replaceState(null, "", "/verify-email");
+    }
     if (!token) {
       setState("error");
       setMessage("Geçersiz bağlantı.");
