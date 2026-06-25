@@ -41,3 +41,17 @@ export function passwordResetEmail(input: { resetUrl: string }): EmailTemplate {
       </div>`,
   };
 }
+
+export function verificationEmail(input: { verifyUrl: string }): EmailTemplate {
+  return {
+    subject: `${brand} — E-posta adresinizi doğrulayın`,
+    text: `Hesabınızı etkinleştirmek için e-postanızı doğrulayın (24 saat geçerli): ${input.verifyUrl}`,
+    html: `
+      <div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto">
+        <h2>E-posta doğrulama</h2>
+        <p>Kaydınız için teşekkürler! Hesabınızı etkinleştirmek için e-postanızı doğrulayın (24 saat geçerli):</p>
+        <p><a href="${input.verifyUrl}" style="background:#1f6feb;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none">E-postamı doğrula</a></p>
+        <p style="color:#666;font-size:13px">Bu hesabı siz oluşturmadıysanız e-postayı yok sayın.</p>
+      </div>`,
+  };
+}

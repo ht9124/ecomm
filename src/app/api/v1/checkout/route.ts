@@ -24,6 +24,20 @@ export const POST = handle(async (req) => {
   await expireStalePendingOrders(env.commerce.pendingOrderTtlMinutes);
 
   const { cart, userId } = await resolveCart();
+
+  // O-4: Giriş yapmış üyeler için e-posta doğrulaması zorunlu (env-gated).
+  // Misafir checkout etkilenmez (oturum açan bir hesabın sahte e-posta ile
+  // sipariş vermesini engeller).
+  if (userId && env.security.requireEmailVerification) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { emailVerified: true },
+    });
+    if (!user?.emailVerified) {
+      return fail("Sipariş vermeden önce e-posta adresinizi doğrulayın", 403);
+    }
+  }
+
   const input = checkoutSchema.parse(await req.json());
 
   const order = await createOrderFromCart({ cartId: cart.id, userId, input });

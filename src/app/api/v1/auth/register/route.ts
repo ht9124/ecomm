@@ -4,6 +4,7 @@ import { ok, fail, handle } from "@/lib/api";
 import { registerSchema } from "@/lib/validation";
 import { hashPassword } from "@/lib/auth";
 import { issueSession } from "@/lib/auth-session";
+import { sendEmailVerification } from "@/lib/email-verification";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export const POST = handle(async (req) => {
@@ -26,6 +27,9 @@ export const POST = handle(async (req) => {
     },
   });
 
+  // O-4: emailVerified BOŞ bırakılır; doğrulama e-postası gönderilir.
+  await sendEmailVerification({ id: user.id, email: user.email });
+
   await issueSession({ id: user.id, email: user.email, role: user.role });
-  return ok({ id: user.id, email: user.email, role: user.role });
+  return ok({ id: user.id, email: user.email, role: user.role, emailVerified: false });
 });

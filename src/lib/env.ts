@@ -89,5 +89,7 @@ export const env = {
     // IP'si X-Forwarded-For listesinde sağdan bu kadar içeridedir. Doğrudan
     // (proxy'siz) servis için 0; tek CDN/reverse-proxy arkasında 1.
     trustedProxyCount: num("TRUSTED_PROXY_COUNT", 1),
+    // Üye siparişlerinde e-posta doğrulamasını zorunlu kıl (O-4).
+    requireEmailVerification: (process.env.REQUIRE_EMAIL_VERIFICATION ?? "true") !== "false",
   },
 } as const;

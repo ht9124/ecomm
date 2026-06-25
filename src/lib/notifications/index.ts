@@ -1,7 +1,7 @@
 // Bildirim servisi — transactional e-posta + SMS, sağlayıcı-agnostik adaptör.
 // E-posta: SendGrid/Mailgun/SES, SMS: Netgsm/Twilio. Şablonlar templates.ts'de.
 import { env } from "../env";
-import { orderConfirmationEmail, passwordResetEmail, type EmailTemplate } from "./templates";
+import { orderConfirmationEmail, passwordResetEmail, verificationEmail, type EmailTemplate } from "./templates";
 
 export interface EmailMessage {
   to: string;
@@ -50,4 +50,11 @@ export async function notifyPasswordReset(input: {
   resetUrl: string;
 }): Promise<void> {
   await sendEmail({ to: input.email, template: passwordResetEmail(input) });
+}
+
+export async function notifyEmailVerification(input: {
+  email: string;
+  verifyUrl: string;
+}): Promise<void> {
+  await sendEmail({ to: input.email, template: verificationEmail(input) });
 }

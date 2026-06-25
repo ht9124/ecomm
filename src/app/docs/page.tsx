@@ -5,13 +5,29 @@ export const metadata: Metadata = {
   robots: { index: false },
 };
 
-// Swagger UI — /api/docs OpenAPI spec'ini CDN'den yüklenen Swagger UI ile gösterir.
+// Swagger UI — CDN'den yüklenir. TEDARİK ZİNCİRİ KORUMASI (O-3):
+// sürüm SABİTLENİR + SRI (integrity) hash'i + crossorigin. unpkg ele geçirilse
+// bile değiştirilmiş dosya hash uyuşmazlığından tarayıcıca reddedilir.
+const SWAGGER_VERSION = "5.17.14";
+const CSS_SRI = "sha384-wxLW6kwyHktdDGr6Pv1zgm/VGJh99lfUbzSn6HNHBENZlCN7W602k9VkGdxuFvPn";
+const JS_SRI = "sha384-wmyclcVGX/WhUkdkATwhaK1X1JtiNrr2EoYJ+diV3vj4v6OC5yCeSu+yW13SYJep";
+
 export default function ApiDocsPage() {
   return (
     <div>
-      <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+      <link
+        rel="stylesheet"
+        href={`https://unpkg.com/swagger-ui-dist@${SWAGGER_VERSION}/swagger-ui.css`}
+        integrity={CSS_SRI}
+        crossOrigin="anonymous"
+      />
       <div id="swagger-ui" />
-      <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js" async />
+      <script
+        src={`https://unpkg.com/swagger-ui-dist@${SWAGGER_VERSION}/swagger-ui-bundle.js`}
+        integrity={JS_SRI}
+        crossOrigin="anonymous"
+        async
+      />
       <script
         dangerouslySetInnerHTML={{
           __html: `

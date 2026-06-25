@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
+import { VerifyBanner } from "@/components/account/VerifyBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export default async function AccountOverview() {
   const [user, orderCount, addressCount] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true, firstName: true, lastName: true, phone: true, createdAt: true, marketingConsent: true },
+      select: { email: true, firstName: true, lastName: true, phone: true, createdAt: true, marketingConsent: true, emailVerified: true },
     }),
     prisma.order.count({ where: { userId, deletedAt: null } }),
     prisma.address.count({ where: { userId, deletedAt: null } }),
@@ -21,6 +22,8 @@ export default async function AccountOverview() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold">Profil</h1>
+
+      {!user?.emailVerified && <VerifyBanner />}
 
       <div className="card space-y-2 p-4 text-sm">
         <Row label="Ad Soyad" value={[user?.firstName, user?.lastName].filter(Boolean).join(" ") || "—"} />
