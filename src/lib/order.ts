@@ -2,6 +2,7 @@
 // 1) stok son kontrolü + düşümü  2) tutarın sunucuda yeniden hesabı
 // 3) sipariş + kalemler (snapshot)  4) ödeme kaydı (PENDING)
 // Misafir checkout: userId null olabilir, email zorunlu.
+import type { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 import { ApiError } from "./api";
 import { computePricing } from "./money";
@@ -132,12 +133,15 @@ export async function createOrderFromCart(params: {
   });
 }
 
-// Ödeme onaylandığında çağrılır (webhook). Idempotent: zaten PAID ise dokunmaz.
+// Ödeme onaylandığında çağrılır (webhook). Idempotent.
+// GÜVENLİK (K-3): YALNIZCA PENDING → PAID geçişi yapılır. Süre aşımıyla
+// iptal edilmiş (CANCELLED) bir sipariş, geç gelen bir ödeme webhook'uyla
+// PAID yapılamaz (stok zaten iade edilmiş olur → oversell/çift teslim riski).
 export async function markOrderPaid(orderId: string, providerPaymentId: string) {
   return prisma.$transaction(async (tx) => {
     const order = await tx.order.findUnique({ where: { id: orderId }, include: { payment: true } });
     if (!order) throw new ApiError("Sipariş bulunamadı", 404);
-    if (order.status === "PAID" || order.status === "PROCESSING") return order;
+    if (order.status !== "PENDING") return order; // PAID/CANCELLED/REFUNDED → dokunma
 
     await tx.payment.update({
       where: { orderId },
@@ -145,4 +149,57 @@ export async function markOrderPaid(orderId: string, providerPaymentId: string) 
     });
     return tx.order.update({ where: { id: orderId }, data: { status: "PAID" } });
   });
+}
+
+// Kupon kullanımını serbest bırak (iptal/süre aşımında geri al). 0'ın altına inmez.
+async function releaseCoupon(tx: Prisma.TransactionClient, couponId: string | null) {
+  if (!couponId) return;
+  await tx.coupon.updateMany({
+    where: { id: couponId, usedCount: { gt: 0 } },
+    data: { usedCount: { decrement: 1 } },
+  });
+}
+
+// K-3: Ödenmemiş (PENDING) siparişler stok ve kupon kullanımını "rezerve" eder.
+// Süresi dolanları iptal edip stoğu/kuponu geri vererek envanter/kupon tükenmesi
+// (ödemeden DoS) saldırısını TTL penceresiyle sınırlandırırız. İdempotent:
+// yalnızca PENDING seçilir, CANCELLED'a çekilir → çift iade olmaz.
+export async function expireStalePendingOrders(ttlMinutes = 30, limit = 50): Promise<number> {
+  const cutoff = new Date(Date.now() - ttlMinutes * 60 * 1000);
+  const stale = await prisma.order.findMany({
+    where: { status: "PENDING", deletedAt: null, createdAt: { lt: cutoff } },
+    select: { id: true, couponId: true, items: { select: { productId: true, quantity: true } } },
+    take: limit,
+  });
+
+  let expired = 0;
+  for (const o of stale) {
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Koşullu update — yarış durumunda yalnızca biri kazanır.
+        const res = await tx.order.updateMany({
+          where: { id: o.id, status: "PENDING" },
+          data: { status: "CANCELLED" },
+        });
+        if (res.count === 0) return; // başka bir işlem (ödeme/iptal) önce davrandı
+        for (const it of o.items) {
+          if (it.productId) {
+            await tx.product.update({
+              where: { id: it.productId },
+              data: { stock: { increment: it.quantity } },
+            });
+          }
+        }
+        await releaseCoupon(tx, o.couponId);
+        await tx.payment.updateMany({
+          where: { orderId: o.id, status: "PENDING" },
+          data: { status: "FAILED" },
+        });
+      });
+      expired++;
+    } catch {
+      // tek bir siparişin hatası diğerlerini engellemesin
+    }
+  }
+  return expired;
 }

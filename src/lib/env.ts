@@ -74,6 +74,9 @@ export const env = {
     defaultShippingFee: num("DEFAULT_SHIPPING_FEE", 49.9),
     taxRate: num("TAX_RATE", 0.2),
     currency: process.env.CURRENCY ?? "TRY",
+    // K-3: Ödenmemiş (PENDING) siparişin stok/kupon rezervasyonunu tuttuğu süre.
+    // Süre dolunca otomatik iptal edilip stok/kupon iade edilir.
+    pendingOrderTtlMinutes: num("PENDING_ORDER_TTL_MINUTES", 30),
   },
 
   rateLimit: {

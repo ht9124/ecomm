@@ -95,6 +95,13 @@ export async function cancelOrder(orderId: string, userId: string) {
 
   return prisma.$transaction(async (tx) => {
     await restockOrder(tx, orderId);
+    // İptal edilen siparişin kuponunu serbest bırak (kupon kullanımı geri alınır).
+    if (order.couponId) {
+      await tx.coupon.updateMany({
+        where: { id: order.couponId, usedCount: { gt: 0 } },
+        data: { usedCount: { decrement: 1 } },
+      });
+    }
     await tx.returnRequest.create({
       data: {
         orderId,

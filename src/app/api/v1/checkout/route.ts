@@ -6,7 +6,7 @@ import { ok, fail, handle } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { resolveCart } from "@/lib/cart-resolver";
-import { createOrderFromCart } from "@/lib/order";
+import { createOrderFromCart, expireStalePendingOrders } from "@/lib/order";
 import { getPaymentProvider } from "@/lib/payments";
 import { checkoutSchema } from "@/lib/validation";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
@@ -18,6 +18,10 @@ export const POST = handle(async (req) => {
   if (!rateLimit(`checkout:${ip}`, 10, 60000).allowed) {
     return fail("Çok fazla deneme, lütfen bekleyin", 429);
   }
+
+  // K-3: Her checkout'ta, süresi dolmuş ödenmemiş siparişlerin stok/kupon
+  // rezervasyonunu geri al (fırsatçı temizlik). Üretimde ayrıca cron önerilir.
+  await expireStalePendingOrders(env.commerce.pendingOrderTtlMinutes);
 
   const { cart, userId } = await resolveCart();
   const input = checkoutSchema.parse(await req.json());
