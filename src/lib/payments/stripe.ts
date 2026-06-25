@@ -1,6 +1,8 @@
 // Stripe adaptörü (iskelet).
 // Gerçek entegrasyonda `stripe` npm paketi kullanılır. PaymentIntent + 3DS
 // (automatic_payment_methods), webhook imza doğrulama, refund, idempotency.
+import { createHmac } from "node:crypto";
+import { timingSafeEqualStr } from "../safe-compare";
 import type {
   PaymentProvider,
   PaymentInitInput,
@@ -46,9 +48,14 @@ export class StripeProvider implements PaymentProvider {
   }
 
   verifyWebhook(rawBody: string, signature: string | null): WebhookParseResult | null {
-    // TODO: stripe.webhooks.constructEvent(rawBody, signature, webhookSecret)
-    // İmza doğrulanmadan asla işleme alınmaz.
-    if (!signature) return null;
+    // FAIL-CLOSED: webhookSecret veya imza yoksa REDDET (K-1).
+    // ÜRETİM NOTU: gerçek entegrasyonda `stripe.webhooks.constructEvent(
+    // rawBody, signature, webhookSecret)` kullanılmalı (t=…,v1=… şeması).
+    // Buradaki HMAC-SHA256 hex doğrulama, SDK eklenene kadar güvenli-varsayılan
+    // (secret olmadan webhook işlenemez) sağlamak içindir.
+    if (!this.webhookSecret || !signature) return null;
+    const expected = createHmac("sha256", this.webhookSecret).update(rawBody).digest("hex");
+    if (!timingSafeEqualStr(expected, signature)) return null;
     try {
       const event = JSON.parse(rawBody);
       const pi = event?.data?.object ?? {};

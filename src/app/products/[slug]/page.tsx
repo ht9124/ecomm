@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { formatTRY, taxIncludedAmount } from "@/lib/money";
 import { AddToCartButton } from "@/components/AddToCartButton";
+import { safeJsonLd } from "@/lib/json-ld";
 
 export const revalidate = 120; // ISR
 
@@ -56,7 +57,7 @@ export default async function ProductDetail({ params }: { params: { slug: string
 
   return (
     <div>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }} />
 
       <nav className="mb-4 text-sm text-gray-500">
         <Link href="/products" className="hover:text-brand">Ürünler</Link>

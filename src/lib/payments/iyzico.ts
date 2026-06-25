@@ -3,6 +3,7 @@
 // sözleşmeye uygun, 3DS + webhook + refund + idempotency noktaları işaretli
 // bir iskelet bırakıldı. Anahtarlar .env'den okunur.
 import { createHmac } from "node:crypto";
+import { timingSafeEqualStr } from "../safe-compare";
 import type {
   PaymentProvider,
   PaymentInitInput,
@@ -47,11 +48,11 @@ export class IyzicoProvider implements PaymentProvider {
   }
 
   verifyWebhook(rawBody: string, signature: string | null): WebhookParseResult | null {
-    // İyzico bildirim imzası HMAC-SHA256 ile doğrulanır (secretKey).
-    if (this.secretKey && signature) {
-      const expected = createHmac("sha256", this.secretKey).update(rawBody).digest("base64");
-      if (expected !== signature) return null;
-    }
+    // FAIL-CLOSED: secret veya imza yoksa webhook REDDEDİLİR. Yapılandırma
+    // eksikse imzasız bir isteğin siparişi PAID yapması engellenir (K-1).
+    if (!this.secretKey || !signature) return null;
+    const expected = createHmac("sha256", this.secretKey).update(rawBody).digest("base64");
+    if (!timingSafeEqualStr(expected, signature)) return null;
     try {
       const body = JSON.parse(rawBody);
       return {

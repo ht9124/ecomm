@@ -21,14 +21,40 @@ function num(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+// Örnek/dev'den kopyalanmış, herkesçe bilinen değerler — reddedilir (K-2).
+const INSECURE_SECRETS = new Set([
+  "dev-access-secret",
+  "dev-refresh-secret",
+  "dev-access-secret-change-me-please-32bytes",
+  "dev-refresh-secret-change-me-please-32bytes",
+  "change-me",
+  "secret",
+]);
+
+// FAIL-CLOSED secret doğrulaması: her ortamda zorunlu, ≥32 karakter ve
+// bilinen varsayılan olmamalı. Aksi halde uygulama BAŞLAMAZ.
+// Üretmek için: openssl rand -hex 32
+function requireSecret(name: string): string {
+  const v = process.env[name];
+  const placeholderLike = v ? /change[_-]?me|__|openssl|placeholder/i.test(v) : false;
+  if (!v || v.length < 32 || INSECURE_SECRETS.has(v) || placeholderLike) {
+    throw new Error(
+      `Güvensiz/eksik ortam değişkeni: ${name}. En az 32 karakterlik rastgele bir ` +
+        `değer olmalı ve örnek/dev varsayılanı kullanılamaz. ` +
+        `Üretmek için: openssl rand -hex 32`
+    );
+  }
+  return v;
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
   databaseUrl: required("DATABASE_URL"),
 
   jwt: {
-    accessSecret: required("JWT_ACCESS_SECRET", "dev-access-secret"),
-    refreshSecret: required("JWT_REFRESH_SECRET", "dev-refresh-secret"),
+    accessSecret: requireSecret("JWT_ACCESS_SECRET"),
+    refreshSecret: requireSecret("JWT_REFRESH_SECRET"),
     accessTtl: num("ACCESS_TOKEN_TTL", 900),
     refreshTtl: num("REFRESH_TOKEN_TTL", 2592000),
   },
